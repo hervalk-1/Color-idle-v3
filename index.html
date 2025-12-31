@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Colorius – True Cascade (Stable)</title>
+<title>Colorius – Infinite Cascade</title>
 <style>
 body { margin:0; background:#0b0b0b; color:#eaeaea; font-family:monospace; }
 #hud { position:fixed; top:10px; right:12px; font-size:12px; }
@@ -34,12 +34,14 @@ let bossHP = bossMax;
 
 const BASE_SPEED = 0.15;
 const COST_GROWTH = 1.6;
+const MAX_RENDER_BARS = 6;
 
-// bars[i].value is always in [0, 1)
 const state = {
   generators: 0,
   cost: 10,
-  bars: [{ value: 0 }]
+  bars: [
+    { value: 0, unlocked: true }
+  ]
 };
 
 function format(n) {
@@ -56,35 +58,42 @@ function buyGen() {
   state.cost = Math.floor(10 * Math.pow(COST_GROWTH, state.generators));
 }
 
-function ensureBar(i) {
-  if (!state.bars[i]) state.bars[i] = { value: 0 };
+function unlockBar(index) {
+  if (!state.bars[index]) {
+    state.bars[index] = { value: 0, unlocked: true };
+  } else {
+    state.bars[index].unlocked = true;
+  }
 }
 
 function tick(dt) {
   if (state.generators === 0) return;
 
-  // 1) Accumulate ONLY bar 1
   state.bars[0].value += BASE_SPEED * state.generators * dt;
 
-  // 2) Propagate with a HARD CAP per frame (mobile safety)
   let cascades = 0;
-  const MAX_CASCADES = 10;
+  const MAX_CASCADES = 12;
 
   for (let i = 0; i < state.bars.length && cascades < MAX_CASCADES; i++) {
-    if (state.bars[i].value >= 1) {
-      const overflow = Math.floor(state.bars[i].value);
-      state.bars[i].value -= overflow;
+    const bar = state.bars[i];
+    if (!bar.unlocked) break;
 
-      // Feed next bar exactly 'overflow' times
-      ensureBar(i + 1);
-      state.bars[i + 1].value += overflow;
-
+    if (bar.value >= 1) {
+      const overflow = Math.floor(bar.value);
+      bar.value -= overflow;
       cascades += overflow;
 
-      // DAMAGE ONLY when bar 3 (index 2) completes
-      if (i + 1 === 2 && overflow > 0) {
-        bossHP -= overflow;
-        money += overflow;
+      if (!state.bars[i + 1] || !state.bars[i + 1].unlocked) {
+        unlockBar(i + 1);
+      }
+
+      state.bars[i + 1].value += overflow;
+
+      if (i + 1 >= 2) {
+        const tier = (i + 1) - 2;
+        const dmg = overflow * Math.pow(2, tier);
+        bossHP -= dmg;
+        money += dmg;
 
         if (bossHP <= 0) {
           bossMax *= 5;
@@ -111,14 +120,18 @@ function render() {
   c.className = "color";
   c.innerHTML = `RED<br>Gen: ${state.generators} | Cost: ${format(state.cost)}`;
 
-  for (let i = state.bars.length - 1; i >= 0; i--) {
-    const bar = document.createElement("div");
-    bar.className = "bar";
+  const unlockedBars = state.bars.filter(b => b.unlocked);
+  const start = Math.max(0, unlockedBars.length - MAX_RENDER_BARS);
+
+  for (let i = unlockedBars.length - 1; i >= start; i--) {
+    const bar = unlockedBars[i];
+    const barDiv = document.createElement("div");
+    barDiv.className = "bar";
     const fill = document.createElement("div");
     fill.className = "fill";
-    fill.style.width = Math.min(state.bars[i].value * 100, 100) + "%";
-    bar.appendChild(fill);
-    c.appendChild(bar);
+    fill.style.width = Math.min(bar.value * 100, 100) + "%";
+    barDiv.appendChild(fill);
+    c.appendChild(barDiv);
   }
 
   const btn = document.createElement("button");
@@ -132,7 +145,7 @@ function render() {
 
 let last = performance.now();
 function loop(now) {
-  const dt = Math.min((now - last) / 1000, 0.1); // clamp dt for safety
+  const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
   tick(dt);
   render();
