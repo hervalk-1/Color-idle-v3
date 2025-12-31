@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Colorius – Infinite Cascade</title>
+<title>Colorius – Infinite Cascade (Final)</title>
 <style>
 body { margin:0; background:#0b0b0b; color:#eaeaea; font-family:monospace; }
 #hud { position:fixed; top:10px; right:12px; font-size:12px; }
@@ -40,7 +40,7 @@ const state = {
   generators: 0,
   cost: 10,
   bars: [
-    { value: 0, unlocked: true }
+    { value: 0, unlocked: true, unlockedNext: false } // Bar 1
   ]
 };
 
@@ -58,21 +58,18 @@ function buyGen() {
   state.cost = Math.floor(10 * Math.pow(COST_GROWTH, state.generators));
 }
 
-function unlockBar(index) {
-  if (!state.bars[index]) {
-    state.bars[index] = { value: 0, unlocked: true };
-  } else {
-    state.bars[index].unlocked = true;
-  }
+function createBar() {
+  return { value: 0, unlocked: true, unlockedNext: false };
 }
 
 function tick(dt) {
   if (state.generators === 0) return;
 
+  // Bar 1 continuous fill
   state.bars[0].value += BASE_SPEED * state.generators * dt;
 
   let cascades = 0;
-  const MAX_CASCADES = 12;
+  const MAX_CASCADES = 10;
 
   for (let i = 0; i < state.bars.length && cascades < MAX_CASCADES; i++) {
     const bar = state.bars[i];
@@ -83,12 +80,18 @@ function tick(dt) {
       bar.value -= overflow;
       cascades += overflow;
 
-      if (!state.bars[i + 1] || !state.bars[i + 1].unlocked) {
-        unlockBar(i + 1);
+      // Unlock NEXT BAR ONLY ONCE EVER
+      if (!bar.unlockedNext) {
+        state.bars[i + 1] = createBar();
+        bar.unlockedNext = true;
       }
 
-      state.bars[i + 1].value += overflow;
+      // Feed next bar if it exists
+      if (state.bars[i + 1]) {
+        state.bars[i + 1].value += overflow;
+      }
 
+      // Damage logic: bar 3+
       if (i + 1 >= 2) {
         const tier = (i + 1) - 2;
         const dmg = overflow * Math.pow(2, tier);
@@ -120,7 +123,7 @@ function render() {
   c.className = "color";
   c.innerHTML = `RED<br>Gen: ${state.generators} | Cost: ${format(state.cost)}`;
 
-  const unlockedBars = state.bars.filter(b => b.unlocked);
+  const unlockedBars = state.bars;
   const start = Math.max(0, unlockedBars.length - MAX_RENDER_BARS);
 
   for (let i = unlockedBars.length - 1; i >= start; i--) {
